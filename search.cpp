@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
     p.add<std::string>("query_fn", 'q', "input file name of queries (bvecs format)", true);
     p.add<uint32_t>("length", 'l', "length", false, 64);
     p.add<uint32_t>("alphabet_size", 'a', "alphabet size", false, 256);
-    p.add<std::string>("hamming_ranges", 'r', "hamming ranges", false, "0:10:2");
+    p.add<std::string>("hamming_ranges", 'r', "hamming ranges (min:max:step)", false, "0:10:2");
     p.add<bool>("enable_test", 't', "enable test", false, false);
     p.parse_check(argc, argv);
 
@@ -238,7 +238,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
-                std::cout << j << ":\t" << solutions.size() << " solutions" << std::endl;
+                // std::cout << j << ":\t" << solutions.size() << " solutions" << std::endl;
             }
 
             std::cout << "--> No problem!!" << std::endl;
@@ -249,17 +249,20 @@ int main(int argc, char* argv[]) {
             std::vector<uint32_t> solutions;
             solutions.reserve(1U << 10);
 
+            uint64_t sum_candidates = 0;
+
             timer t;
             for (uint32_t j = 0; j < queries.size(); ++j) {
-                index->search(queries[j], hamming_range, [&](uint32_t id) { solutions.push_back(id); });
+                sum_candidates += index->search(queries[j], hamming_range,  //
+                                                [&](uint32_t id) { solutions.push_back(id); });
             }
             double elapsed_ms = t.get<std::chrono::milliseconds>() / queries.size();
             double num_solutions = double(solutions.size()) / queries.size();
+            double num_candidates = double(sum_candidates) / queries.size();
 
-            std::cout << "--> "  //
-                      << elapsed_ms << " ms_per_query; "  //
-                      << num_solutions << " solutions_per_query"  //
-                      << std::endl;
+            std::cout << "--> " << elapsed_ms << " ms_per_query" << std::endl;
+            std::cout << "--> " << num_solutions << " solutions_per_query" << std::endl;
+            std::cout << "--> " << num_candidates << " candidates_per_query" << std::endl;
         }
     }
 

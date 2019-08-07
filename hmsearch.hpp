@@ -115,6 +115,10 @@ class odv_index {
             std::cerr << "error: alphabet_size is too large" << std::endl;
             exit(1);
         }
+        if (keys.size() * m_length > UINT32_MAX) {
+            std::cerr << "error: size of ids exceeds " << UINT32_MAX << std::endl;
+            exit(1);
+        }
 
         m_length = length;
         m_del_marker = alphabet_size;
@@ -144,7 +148,7 @@ class odv_index {
 
         const size_t table_size = static_cast<size_t>(signature_map.size() * LOAD_FACTOR);
         m_table.resize(table_size, element_t{UINT32_MAX, 0, 0});
-        m_ids.reserve(keys.size());
+        m_ids.reserve(keys.size() * m_length);
 
         if (signature_map.size() > UINT32_MAX) {
             std::cerr << "error: number of signatures exceeds " << UINT32_MAX << std::endl;
@@ -182,6 +186,7 @@ class odv_index {
         }
 
         assert(sig_beg == m_signatures.size());
+        assert(m_ids.size() == keys.size() * m_length);
     }
 
     template <class T>
@@ -198,6 +203,7 @@ class odv_index {
                 }
 
                 const uint64_t sig_beg = m_table[pos].sig_pos * m_length;
+
                 if (std::equal(sig.begin(), sig.end(), m_signatures.begin() + sig_beg)) {
                     for (uint32_t i = m_table[pos].id_beg; i < m_table[pos].id_end; ++i) {
                         fn(m_ids[i]);
@@ -216,7 +222,7 @@ class odv_index {
     template <class T>
     void make_signature(const T* key, uint32_t i, signature_t& out) const {
         assert(out.size() == m_length);
-        std::copy(key, key + m_length, out.data());
+        std::copy(key, key + m_length, out.begin());
         out[i] = m_del_marker;
     }
 };
@@ -324,10 +330,8 @@ class hm_index {
             std::copy(keys[i], keys[i] + m_length, m_keys.begin() + (i * m_length));
         }
 #else
-        // build vertical_keys;
         m_vertical_levels = sdsl::bits::hi(alphabet_size) + 1;
         m_vertical_keys = sdsl::int_vector<>(keys.size() * m_vertical_levels, 0, m_length);
-
         for (size_t i = 0; i < keys.size(); ++i) {
             const size_t beg = i * m_vertical_levels;
             for (uint32_t j = 0; j < m_vertical_levels; ++j) {
@@ -338,7 +342,7 @@ class hm_index {
     }
 
     template <class T>
-    void search(const T* query, uint32_t hamming_range, std::function<void(uint32_t)> fn) const {
+    uint64_t search(const T* query, uint32_t hamming_range, std::function<void(uint32_t)> fn) const {
         if (m_buckets != get_proper_buckets(hamming_range)) {
             std::cerr << "error: unsupported hamming range, " << hamming_range << std::endl;
             exit(1);
@@ -353,6 +357,7 @@ class hm_index {
             const odv_index& odv_idx = m_odv_indexes[b];
 
             match_map.clear();
+
             odv_idx.search(b_query, sig, [&](uint32_t id) {
                 auto it = match_map.find(id);
                 if (it == match_map.end()) {
@@ -363,11 +368,20 @@ class hm_index {
             });
 
             for (const auto& kv : match_map) {
-                auto it = cand_map.find(kv.first);
-                if (it != cand_map.end()) {
-                    it->second.push_back(kv.second > 2 ? 0 : 1);
+                if (kv.second >= 2) {
+                    auto it = cand_map.find(kv.first);
+                    if (it != cand_map.end()) {
+                        it->second.push_back(0);
+                    } else {
+                        cand_map.insert(std::make_pair(kv.first, std::vector<uint32_t>{0}));
+                    }
                 } else {
-                    cand_map.insert(std::make_pair(kv.first, std::vector<uint32_t>{kv.second > 2 ? 0U : 1U}));
+                    auto it = cand_map.find(kv.first);
+                    if (it != cand_map.end()) {
+                        it->second.push_back(1);
+                    } else {
+                        cand_map.insert(std::make_pair(kv.first, std::vector<uint32_t>{1}));
+                    }
                 }
             }
         }
@@ -379,21 +393,27 @@ class hm_index {
         }
 #endif
 
+        uint64_t num_candidates = 0;
+
         for (const auto& kv : cand_map) {
             uint32_t cand_id = kv.first;
-            const std::vector<uint32_t>& range_vec = kv.second;
+            const std::vector<uint32_t>& errors = kv.second;
+            assert(errors.size() > 0);
 
             // enhanced filter
             bool filtered = false;
+
             if (hamming_range % 2 == 0) {
-                if (range_vec.size() < 2) {  // has less than two number
-                    if (range_vec[0] == 1) {
+                if (errors.size() < 2) {  // has less than two number
+                    if (errors[0] == 1) {
                         filtered = true;
                     }
                 }
             } else {
-                if (range_vec.size() < 3) {  // has less than three number
-                    if ((range_vec.size() == 1) || (range_vec[0] == 1 && range_vec[1] == 1)) {
+                if (errors.size() < 3) {  // has less than three number
+                    if (errors.size() == 1) {
+                        filtered = true;
+                    } else if (errors[0] == 1 && errors[1] == 1) {
                         filtered = true;
                     }
                 }
@@ -427,8 +447,12 @@ class hm_index {
                 if (hammina_dist <= hamming_range) {
                     fn(cand_id);
                 }
+
+                ++num_candidates;
             }
         }
+
+        return num_candidates;
     }
 };
 
