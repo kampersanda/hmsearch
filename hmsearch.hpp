@@ -8,6 +8,8 @@
 
 #include <sdsl/int_vector.hpp>
 
+// #define HM_DISABLE_VERT
+
 namespace hmsearch {
 
 using signature_t = std::vector<uint32_t>;
@@ -64,13 +66,16 @@ namespace hmsearch {
 
 // one-del-var
 class odv_index {
+  public:
+    using size_type = uint64_t;  // for sdsl::serialize
+
   private:
     static constexpr float LOAD_FACTOR = 1.5;
 
     struct element_t {
-        uint32_t sig_pos = UINT32_MAX;
-        uint32_t id_beg = 0;
-        uint32_t id_end = 0;
+        uint32_t sig_pos;
+        uint32_t id_beg;
+        uint32_t id_end;
     };
     std::vector<element_t> m_table;
     std::vector<uint32_t> m_ids;
@@ -81,6 +86,26 @@ class odv_index {
   public:
     odv_index() = default;
     ~odv_index() = default;
+
+    size_type serialize(std::ostream& out, sdsl::structure_tree_node* v = nullptr, std::string name = "") const {
+        auto child = sdsl::structure_tree::add_child(v, name, sdsl::util::class_name(*this));
+        size_type written_bytes = 0;
+        written_bytes += sdsl::serialize(m_table, out);
+        written_bytes += sdsl::serialize(m_ids, out);
+        written_bytes += sdsl::serialize(m_signatures, out);
+        written_bytes += sdsl::serialize(m_length, out);
+        written_bytes += sdsl::serialize(m_del_marker, out);
+        sdsl::structure_tree::add_size(child, written_bytes);
+        return written_bytes;
+    }
+
+    void load(std::istream& in) {
+        sdsl::load(m_table, in);
+        sdsl::load(m_ids, in);
+        sdsl::load(m_signatures, in);
+        sdsl::load(m_length, in);
+        sdsl::load(m_del_marker, in);
+    }
 
     template <class T>
     void build(const std::vector<const T*>& keys, uint32_t length, uint32_t alphabet_size) {
@@ -118,7 +143,7 @@ class odv_index {
         }
 
         const size_t table_size = static_cast<size_t>(signature_map.size() * LOAD_FACTOR);
-        m_table.resize(table_size);
+        m_table.resize(table_size, element_t{UINT32_MAX, 0, 0});
         m_ids.reserve(keys.size());
 
         if (signature_map.size() > UINT32_MAX) {
@@ -160,13 +185,6 @@ class odv_index {
     }
 
     template <class T>
-    void make_signature(const T* key, uint32_t i, signature_t& out) const {
-        assert(out.size() == m_length);
-        std::copy(key, key + m_length, out.data());
-        out[i] = m_del_marker;
-    }
-
-    template <class T>
     void search(const T* key, signature_t& sig, std::function<void(uint32_t)> fn) const {
         sig.resize(m_length);
 
@@ -176,13 +194,11 @@ class odv_index {
 
             while (true) {
                 if (m_table[pos].sig_pos == UINT32_MAX) {  // vacant?
-                    // not found
                     break;
                 }
 
                 const uint64_t sig_beg = m_table[pos].sig_pos * m_length;
                 if (std::equal(sig.begin(), sig.end(), m_signatures.begin() + sig_beg)) {
-                    // found
                     for (uint32_t i = m_table[pos].id_beg; i < m_table[pos].id_end; ++i) {
                         fn(m_ids[i]);
                     }
@@ -196,21 +212,67 @@ class odv_index {
             }
         }
     }
+
+    template <class T>
+    void make_signature(const T* key, uint32_t i, signature_t& out) const {
+        assert(out.size() == m_length);
+        std::copy(key, key + m_length, out.data());
+        out[i] = m_del_marker;
+    }
 };
 
 class hm_index {
+  public:
+    using size_type = uint64_t;  // for sdsl::serialize
+
   private:
-    std::vector<std::unique_ptr<odv_index>> m_odv_indexes;
-    sdsl::int_vector<> m_vertical_keys;
+    std::vector<odv_index> m_odv_indexes;
     std::vector<uint32_t> m_bucket_begs;
     uint32_t m_length = 0;
     uint32_t m_alphabet_size = 0;
     uint32_t m_buckets = 0;
+#ifdef HM_DISABLE_VERT
+    sdsl::int_vector<> m_keys;
+#else
+    sdsl::int_vector<> m_vertical_keys;
     uint32_t m_vertical_levels = 0;
+#endif
 
   public:
     hm_index() = default;
     ~hm_index() = default;
+
+    size_type serialize(std::ostream& out, sdsl::structure_tree_node* v = nullptr, std::string name = "") const {
+        auto child = sdsl::structure_tree::add_child(v, name, sdsl::util::class_name(*this));
+        size_type written_bytes = 0;
+        written_bytes += sdsl::serialize(m_odv_indexes, out);
+        written_bytes += sdsl::serialize(m_bucket_begs, out);
+        written_bytes += sdsl::serialize(m_length, out);
+        written_bytes += sdsl::serialize(m_alphabet_size, out);
+        written_bytes += sdsl::serialize(m_buckets, out);
+#ifdef HM_DISABLE_VERT
+        written_bytes += sdsl::serialize(m_keys, out);
+#else
+        written_bytes += sdsl::serialize(m_vertical_keys, out);
+        written_bytes += sdsl::serialize(m_vertical_levels, out);
+#endif
+        sdsl::structure_tree::add_size(child, written_bytes);
+        return written_bytes;
+    }
+
+    void load(std::istream& in) {
+        sdsl::load(m_odv_indexes, in);
+        sdsl::load(m_bucket_begs, in);
+        sdsl::load(m_length, in);
+        sdsl::load(m_alphabet_size, in);
+        sdsl::load(m_buckets, in);
+#ifdef HM_DISABLE_VERT
+        sdsl::load(m_keys, in);
+#else
+        sdsl::load(m_vertical_keys, in);
+        sdsl::load(m_vertical_levels, in);
+#endif
+    }
 
     uint32_t get_length() const {
         return m_length;
@@ -221,9 +283,11 @@ class hm_index {
     uint32_t get_buckets() const {
         return m_buckets;
     }
+#ifndef HM_DISABLE_VERT
     uint32_t get_vertical_levels() const {
         return m_vertical_levels;
     }
+#endif
 
     template <class T>
     void build(const std::vector<const T*>& keys, uint32_t length, uint32_t alphabet_size, uint32_t buckets) {
@@ -251,10 +315,15 @@ class hm_index {
             for (size_t i = 0; i < keys.size(); ++i) {
                 bucket_keys[i] = keys[i] + m_bucket_begs[b];
             }
-            m_odv_indexes[b] = std::make_unique<odv_index>();
-            m_odv_indexes[b]->build(bucket_keys, m_bucket_begs[b + 1] - m_bucket_begs[b], alphabet_size);
+            m_odv_indexes[b].build(bucket_keys, m_bucket_begs[b + 1] - m_bucket_begs[b], alphabet_size);
         }
 
+#ifdef HM_DISABLE_VERT
+        m_keys = sdsl::int_vector<>(keys.size() * m_length, 0, sdsl::bits::hi(alphabet_size) + 1);
+        for (size_t i = 0; i < keys.size(); ++i) {
+            std::copy(keys[i], keys[i] + m_length, m_keys.begin() + (i * m_length));
+        }
+#else
         // build vertical_keys;
         m_vertical_levels = sdsl::bits::hi(alphabet_size) + 1;
         m_vertical_keys = sdsl::int_vector<>(keys.size() * m_vertical_levels, 0, m_length);
@@ -265,6 +334,7 @@ class hm_index {
                 m_vertical_keys[beg + j] = make_vertical_code(keys[i], m_length, j);
             }
         }
+#endif
     }
 
     template <class T>
@@ -280,10 +350,10 @@ class hm_index {
 
         for (uint32_t b = 0; b < m_buckets; ++b) {
             const T* b_query = query + m_bucket_begs[b];
-            const odv_index* odv_idx = m_odv_indexes[b].get();
+            const odv_index& odv_idx = m_odv_indexes[b];
 
             match_map.clear();
-            odv_idx->search(b_query, sig, [&](uint32_t id) {
+            odv_idx.search(b_query, sig, [&](uint32_t id) {
                 auto it = match_map.find(id);
                 if (it == match_map.end()) {
                     match_map.insert(std::make_pair(id, 1U));
@@ -292,7 +362,7 @@ class hm_index {
                 }
             });
 
-            for (auto& kv : match_map) {
+            for (const auto& kv : match_map) {
                 auto it = cand_map.find(kv.first);
                 if (it != cand_map.end()) {
                     it->second.push_back(kv.second > 2 ? 0 : 1);
@@ -302,10 +372,12 @@ class hm_index {
             }
         }
 
+#ifndef HM_DISABLE_VERT
         std::vector<uint64_t> vertical_query(m_vertical_levels);
         for (uint32_t j = 0; j < m_vertical_levels; ++j) {
             vertical_query[j] = make_vertical_code(query, m_length, j);
         }
+#endif
 
         for (const auto& kv : cand_map) {
             uint32_t cand_id = kv.first;
@@ -329,8 +401,19 @@ class hm_index {
 
             // verification
             if (!filtered) {
-                uint64_t cumdiff = 0;
                 uint64_t hammina_dist = 0;
+#ifdef HM_DISABLE_VERT
+                auto key = m_keys.begin() + (cand_id * m_length);
+                for (uint32_t j = 0; j < m_length; ++j) {
+                    if (query[j] != key[j]) {
+                        ++hammina_dist;
+                        if (hammina_dist > hamming_range) {
+                            break;
+                        }
+                    }
+                }
+#else
+                uint64_t cumdiff = 0;
                 uint64_t beg = cand_id * m_vertical_levels;
                 for (uint32_t j = 0; j < m_vertical_levels; ++j) {
                     uint64_t diff = m_vertical_keys[beg + j] ^ vertical_query[j];
@@ -340,6 +423,7 @@ class hm_index {
                         break;
                     }
                 }
+#endif
                 if (hammina_dist <= hamming_range) {
                     fn(cand_id);
                 }

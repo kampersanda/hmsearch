@@ -21,7 +21,7 @@ message(STATUS "CXX_FLAGS are ${CMAKE_CXX_FLAGS}")
 message(STATUS "CXX_FLAGS_DEBUG are ${CMAKE_CXX_FLAGS_DEBUG}")
 message(STATUS "CXX_FLAGS_RELEASE are ${CMAKE_CXX_FLAGS_RELEASE}")
 
-add_executable(main main.cpp)
-target_link_libraries(main sdsl)
+add_executable(search search.cpp)
+target_link_libraries(search sdsl)
 
 file(COPY ${CMAKE_SOURCE_DIR}/data DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
