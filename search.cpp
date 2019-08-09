@@ -182,7 +182,7 @@ int main(int argc, char* argv[]) {
     std::unique_ptr<hmsearch::hm_index> index;
 
     for (uint32_t hamming_range = min_range; hamming_range <= max_range; hamming_range += range_step) {
-        const uint32_t proper_buckets = hmsearch::get_proper_buckets(hamming_range);
+        const uint32_t proper_buckets = hmsearch::hm_index::get_proper_buckets(hamming_range);
 
         std::cout << std::endl;
         std::cout << "[analyzing] " << hamming_range << " range; " << proper_buckets << " buckets" << std::endl;
@@ -192,7 +192,7 @@ int main(int argc, char* argv[]) {
             {
                 timer t;
                 index = std::make_unique<hmsearch::hm_index>();
-                index->build(keys, length, alphabet_size, hmsearch::get_proper_buckets(hamming_range));
+                index->build(keys, length, alphabet_size, hmsearch::hm_index::get_proper_buckets(hamming_range));
                 std::cout << "--> construction time: " << t.get<std::chrono::seconds>() << " sec" << std::endl;
             }
         }

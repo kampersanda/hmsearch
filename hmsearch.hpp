@@ -9,6 +9,7 @@
 #include <sdsl/int_vector.hpp>
 
 // #define HM_DISABLE_VERT
+#define HM_PRINT_PROGRESS
 
 namespace hmsearch {
 
@@ -21,48 +22,23 @@ inline bool operator!=(const signature_t& x, const signature_t& y) {
     return !(x == y);
 }
 
-inline size_t fnv1a_hash(const uint32_t* key, size_t length) {
-    static const size_t init = size_t((sizeof(size_t) == 8) ? 0xcbf29ce484222325 : 0x811c9dc5);
-    static const size_t multiplier = size_t((sizeof(size_t) == 8) ? 0x100000001b3 : 0x1000193);
-    size_t hash = init;
-    for (size_t i = 0; i < length; ++i) {
-        hash ^= key[i];
-        hash *= multiplier;
+struct sig_hash {
+    // fnv1a
+    size_t operator()(const signature_t& sig) const {
+        static const size_t init = size_t((sizeof(size_t) == 8) ? 0xcbf29ce484222325 : 0x811c9dc5);
+        static const size_t multiplier = size_t((sizeof(size_t) == 8) ? 0x100000001b3 : 0x1000193);
+        size_t h = init;
+        for (size_t i = 0; i < sig.size(); ++i) {
+            h ^= sig[i];
+            h *= multiplier;
+        }
+        return h;
     }
-    return hash;
-}
-
-template <class T>
-inline uint64_t make_vertical_code(const T* key, uint32_t length, uint32_t level) {
-    assert(length <= 64);
-
-    uint64_t code = 0;
-    for (uint32_t j = 0; j < length; ++j) {
-        uint64_t bit = (key[j] >> level) & 1ULL;
-        code |= (bit << j);
-    }
-    return code;
-}
-
-inline uint32_t get_proper_buckets(uint32_t range) {
-    return (range + 3) / 2;
-}
-
-}  // namespace hmsearch
-
-namespace std {
-
-template <>
-class hash<hmsearch::signature_t> {
-  public:
-    size_t operator()(const hmsearch::signature_t& key) const {
-        return hmsearch::fnv1a_hash(key.data(), key.size());
+    static const sig_hash& get_instance() {
+        static sig_hash hasher;
+        return hasher;
     }
 };
-
-}  // namespace std
-
-namespace hmsearch {
 
 // one-del-var
 class odv_index {
@@ -123,10 +99,21 @@ class odv_index {
         m_length = length;
         m_del_marker = alphabet_size;
 
-        std::unordered_map<signature_t, std::vector<uint32_t>> signature_map;
+#ifdef HM_PRINT_PROGRESS
+        std::cout << "  - making signatures... " << std::flush;
+        uint32_t point = 0;
+#endif
+
+        std::unordered_map<signature_t, std::vector<uint32_t>, sig_hash> signature_map;
         {
             signature_t sig(m_length);
             for (uint32_t i = 0; i < keys.size(); ++i) {
+#ifdef HM_PRINT_PROGRESS
+                if (i == point) {
+                    std::cout << " *" << std::flush;
+                    point += keys.size() / 10;
+                }
+#endif
                 for (uint32_t j = 0; j < m_length; ++j) {
                     if (keys[i][j] >= alphabet_size) {
                         std::cerr << "error: keys include a character whose value is no less than " << alphabet_size
@@ -145,25 +132,40 @@ class odv_index {
                 }
             }
         }
-
-        const size_t table_size = static_cast<size_t>(signature_map.size() * LOAD_FACTOR);
-        m_table.resize(table_size, element_t{UINT32_MAX, 0, 0});
-        m_ids.reserve(keys.size() * m_length);
+#ifdef HM_PRINT_PROGRESS
+        std::cout << std::endl;
+#endif
 
         if (signature_map.size() > UINT32_MAX) {
             std::cerr << "error: number of signatures exceeds " << UINT32_MAX << std::endl;
             exit(1);
         }
+
+        const size_t table_size = static_cast<size_t>(signature_map.size() * LOAD_FACTOR);
+        m_table.resize(table_size, element_t{UINT32_MAX, 0, 0});
+        m_ids.reserve(keys.size() * m_length);
         m_signatures = sdsl::int_vector<>(signature_map.size() * m_length, 0, sdsl::bits::hi(alphabet_size) + 1);
-        // std::cout << "> alphabet_size = " << alphabet_size << ", width = " << int(m_signatures.width()) << std::endl;
+
+#ifdef HM_PRINT_PROGRESS
+        std::cout << "  - storing signatures..." << std::flush;
+        uint32_t progress = 0;
+        point = 0;
+#endif
 
         uint64_t sig_beg = 0;
 
         for (const auto& kv : signature_map) {
+#ifdef HM_PRINT_PROGRESS
+            if (progress++ == point) {
+                std::cout << " *" << std::flush;
+                point += signature_map.size() / 10;
+            }
+#endif
+
             const signature_t& sig = kv.first;
             const std::vector<uint32_t>& ids = kv.second;
 
-            uint64_t pos = std::hash<signature_t>()(sig) % table_size;
+            uint64_t pos = sig_hash::get_instance()(sig) % table_size;
 
             while (true) {
                 if (m_table[pos].sig_pos == UINT32_MAX) {  // vacant?
@@ -184,6 +186,9 @@ class odv_index {
                 }
             }
         }
+#ifdef HM_PRINT_PROGRESS
+        std::cout << std::endl;
+#endif
 
         assert(sig_beg == m_signatures.size());
         assert(m_ids.size() == keys.size() * m_length);
@@ -195,7 +200,7 @@ class odv_index {
 
         for (uint32_t j = 0; j < m_length; ++j) {
             make_signature(key, j, sig);
-            uint64_t pos = std::hash<signature_t>()(sig) % m_table.size();
+            uint64_t pos = sig_hash::get_instance()(sig) % m_table.size();
 
             while (true) {
                 if (m_table[pos].sig_pos == UINT32_MAX) {  // vacant?
@@ -295,12 +300,20 @@ class hm_index {
     }
 #endif
 
+    static uint32_t get_proper_buckets(uint32_t range) {
+        return (range + 3) / 2;
+    }
+
     template <class T>
     void build(const std::vector<const T*>& keys, uint32_t length, uint32_t alphabet_size, uint32_t buckets) {
         if (length > 64) {
             std::cerr << "error: length > 64 is not supported" << std::endl;
             exit(1);
         }
+
+#ifdef HM_PRINT_PROGRESS
+        std::cout << "[hm_index::build] buckets = " << buckets << std::endl;
+#endif
 
         m_length = length;
         m_alphabet_size = alphabet_size;
@@ -318,6 +331,9 @@ class hm_index {
 
         std::vector<const T*> bucket_keys(keys.size());
         for (uint32_t b = 0; b < m_buckets; ++b) {
+#ifdef HM_PRINT_PROGRESS
+            std::cout << "- bucket id = " << b << std::endl;
+#endif
             for (size_t i = 0; i < keys.size(); ++i) {
                 bucket_keys[i] = keys[i] + m_bucket_begs[b];
             }
@@ -453,6 +469,19 @@ class hm_index {
         }
 
         return num_candidates;
+    }
+
+  private:
+    template <class T>
+    static uint64_t make_vertical_code(const T* key, uint32_t length, uint32_t level) {
+        assert(length <= 64);
+
+        uint64_t code = 0;
+        for (uint32_t j = 0; j < length; ++j) {
+            uint64_t bit = (key[j] >> level) & 1ULL;
+            code |= (bit << j);
+        }
+        return code;
     }
 };
 
