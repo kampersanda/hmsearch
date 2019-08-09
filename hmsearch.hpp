@@ -102,7 +102,7 @@ class odv_index {
         m_del_marker = alphabet_size;
 
 #ifdef HMSEARCH_PRINT_PROGRESS
-        std::cout << " #    - Making signatures... " << std::flush;
+        std::cerr << " #    - Making signatures... " << std::flush;
         uint32_t point = 0;
 #endif
 
@@ -112,7 +112,7 @@ class odv_index {
             for (uint32_t i = 0; i < keys.size(); ++i) {
 #ifdef HMSEARCH_PRINT_PROGRESS
                 if (i == point) {
-                    std::cout << " *" << std::flush;
+                    std::cerr << " *" << std::flush;
                     point += keys.size() / 10;
                 }
 #endif
@@ -131,7 +131,7 @@ class odv_index {
             }
         }
 #ifdef HMSEARCH_PRINT_PROGRESS
-        std::cout << std::endl;
+        std::cerr << std::endl;
 #endif
 
         HMSEARCH_CHECK_IF(signature_map.size() > UINT32_MAX, "number of signatures exceeds UINT32_MAX.");
@@ -142,7 +142,7 @@ class odv_index {
         m_signatures = sdsl::int_vector<>(signature_map.size() * m_length, 0, sdsl::bits::hi(alphabet_size) + 1);
 
 #ifdef HMSEARCH_PRINT_PROGRESS
-        std::cout << " #    - Storing signatures..." << std::flush;
+        std::cerr << " #    - Storing signatures..." << std::flush;
         uint32_t progress = 0;
         point = 0;
 #endif
@@ -152,7 +152,7 @@ class odv_index {
         for (const auto& kv : signature_map) {
 #ifdef HMSEARCH_PRINT_PROGRESS
             if (progress++ == point) {
-                std::cout << " *" << std::flush;
+                std::cerr << " *" << std::flush;
                 point += signature_map.size() / 10;
             }
 #endif
@@ -182,7 +182,7 @@ class odv_index {
             }
         }
 #ifdef HMSEARCH_PRINT_PROGRESS
-        std::cout << std::endl;
+        std::cerr << std::endl;
 #endif
 
         assert(sig_beg == m_signatures.size());
@@ -304,7 +304,7 @@ class hm_index {
         HMSEARCH_CHECK_IF(length > 64, "length > 64 is not supported.");
 
 #ifdef HMSEARCH_PRINT_PROGRESS
-        std::cout << " # [hm_index::build] buckets = " << buckets << std::endl;
+        std::cerr << " # [hm_index::build] buckets = " << buckets << std::endl;
 #endif
 
         m_length = length;
@@ -324,7 +324,7 @@ class hm_index {
         std::vector<const T*> bucket_keys(keys.size());
         for (uint32_t b = 0; b < m_buckets; ++b) {
 #ifdef HMSEARCH_PRINT_PROGRESS
-            std::cout << " #   - bucket_id = " << b << std::endl;
+            std::cerr << " #   - bucket_id = " << b << std::endl;
 #endif
             for (size_t i = 0; i < keys.size(); ++i) {
                 bucket_keys[i] = keys[i] + m_bucket_begs[b];
