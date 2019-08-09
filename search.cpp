@@ -194,6 +194,10 @@ int main(int argc, char* argv[]) {
                 index = std::make_unique<hmsearch::hm_index>();
                 index->build(keys, length, alphabet_size, hmsearch::hm_index::get_proper_buckets(hamming_range));
                 std::cout << "--> construction time: " << t.get<std::chrono::seconds>() << " sec" << std::endl;
+
+                uint64_t memory_usage = sdsl::size_in_bytes(*index.get());
+                std::cout << "--> memory usage: " << memory_usage << " bytes; "  //
+                          << memory_usage / (1024.0 * 1024.0) << " MiB" << std::endl;
             }
         }
 

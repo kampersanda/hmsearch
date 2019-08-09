@@ -8,8 +8,16 @@
 
 #include <sdsl/int_vector.hpp>
 
-// #define HM_DISABLE_VERT
-#define HM_PRINT_PROGRESS
+// #define HMSEARCH_DISABLE_VERT
+#define HMSEARCH_PRINT_PROGRESS
+
+#define HMSEARCH_CHECK_IF(cond, msg)                    \
+    do {                                                \
+        if (cond) {                                     \
+            std::cerr << "ERROR: " << msg << std::endl; \
+            exit(1);                                    \
+        }                                               \
+    } while (0)
 
 namespace hmsearch {
 
@@ -87,20 +95,14 @@ class odv_index {
     void build(const std::vector<const T*>& keys, uint32_t length, uint32_t alphabet_size) {
         static_assert(sizeof(T) <= 4, "");
 
-        if (alphabet_size == UINT32_MAX) {
-            std::cerr << "error: alphabet_size is too large" << std::endl;
-            exit(1);
-        }
-        if (keys.size() * m_length > UINT32_MAX) {
-            std::cerr << "error: size of ids exceeds " << UINT32_MAX << std::endl;
-            exit(1);
-        }
+        HMSEARCH_CHECK_IF(alphabet_size == UINT32_MAX, "alphabet_size is too large.");
+        HMSEARCH_CHECK_IF(keys.size() * m_length > UINT32_MAX, "size of ids exceeds.");
 
         m_length = length;
         m_del_marker = alphabet_size;
 
-#ifdef HM_PRINT_PROGRESS
-        std::cout << "  - making signatures... " << std::flush;
+#ifdef HMSEARCH_PRINT_PROGRESS
+        std::cout << " #    - Making signatures... " << std::flush;
         uint32_t point = 0;
 #endif
 
@@ -108,18 +110,14 @@ class odv_index {
         {
             signature_t sig(m_length);
             for (uint32_t i = 0; i < keys.size(); ++i) {
-#ifdef HM_PRINT_PROGRESS
+#ifdef HMSEARCH_PRINT_PROGRESS
                 if (i == point) {
                     std::cout << " *" << std::flush;
                     point += keys.size() / 10;
                 }
 #endif
                 for (uint32_t j = 0; j < m_length; ++j) {
-                    if (keys[i][j] >= alphabet_size) {
-                        std::cerr << "error: keys include a character whose value is no less than " << alphabet_size
-                                  << std::endl;
-                        exit(1);
-                    }
+                    HMSEARCH_CHECK_IF(keys[i][j] >= alphabet_size, "keys include a large character.");
 
                     make_signature(keys[i], j, sig);
 
@@ -132,22 +130,19 @@ class odv_index {
                 }
             }
         }
-#ifdef HM_PRINT_PROGRESS
+#ifdef HMSEARCH_PRINT_PROGRESS
         std::cout << std::endl;
 #endif
 
-        if (signature_map.size() > UINT32_MAX) {
-            std::cerr << "error: number of signatures exceeds " << UINT32_MAX << std::endl;
-            exit(1);
-        }
+        HMSEARCH_CHECK_IF(signature_map.size() > UINT32_MAX, "number of signatures exceeds UINT32_MAX.");
 
         const size_t table_size = static_cast<size_t>(signature_map.size() * LOAD_FACTOR);
         m_table.resize(table_size, element_t{UINT32_MAX, 0, 0});
         m_ids.reserve(keys.size() * m_length);
         m_signatures = sdsl::int_vector<>(signature_map.size() * m_length, 0, sdsl::bits::hi(alphabet_size) + 1);
 
-#ifdef HM_PRINT_PROGRESS
-        std::cout << "  - storing signatures..." << std::flush;
+#ifdef HMSEARCH_PRINT_PROGRESS
+        std::cout << " #    - Storing signatures..." << std::flush;
         uint32_t progress = 0;
         point = 0;
 #endif
@@ -155,7 +150,7 @@ class odv_index {
         uint64_t sig_beg = 0;
 
         for (const auto& kv : signature_map) {
-#ifdef HM_PRINT_PROGRESS
+#ifdef HMSEARCH_PRINT_PROGRESS
             if (progress++ == point) {
                 std::cout << " *" << std::flush;
                 point += signature_map.size() / 10;
@@ -186,7 +181,7 @@ class odv_index {
                 }
             }
         }
-#ifdef HM_PRINT_PROGRESS
+#ifdef HMSEARCH_PRINT_PROGRESS
         std::cout << std::endl;
 #endif
 
@@ -242,7 +237,7 @@ class hm_index {
     uint32_t m_length = 0;
     uint32_t m_alphabet_size = 0;
     uint32_t m_buckets = 0;
-#ifdef HM_DISABLE_VERT
+#ifdef HMSEARCH_DISABLE_VERT
     sdsl::int_vector<> m_keys;
 #else
     sdsl::int_vector<> m_vertical_keys;
@@ -261,7 +256,7 @@ class hm_index {
         written_bytes += sdsl::serialize(m_length, out);
         written_bytes += sdsl::serialize(m_alphabet_size, out);
         written_bytes += sdsl::serialize(m_buckets, out);
-#ifdef HM_DISABLE_VERT
+#ifdef HMSEARCH_DISABLE_VERT
         written_bytes += sdsl::serialize(m_keys, out);
 #else
         written_bytes += sdsl::serialize(m_vertical_keys, out);
@@ -277,7 +272,7 @@ class hm_index {
         sdsl::load(m_length, in);
         sdsl::load(m_alphabet_size, in);
         sdsl::load(m_buckets, in);
-#ifdef HM_DISABLE_VERT
+#ifdef HMSEARCH_DISABLE_VERT
         sdsl::load(m_keys, in);
 #else
         sdsl::load(m_vertical_keys, in);
@@ -294,7 +289,7 @@ class hm_index {
     uint32_t get_buckets() const {
         return m_buckets;
     }
-#ifndef HM_DISABLE_VERT
+#ifndef HMSEARCH_DISABLE_VERT
     uint32_t get_vertical_levels() const {
         return m_vertical_levels;
     }
@@ -306,13 +301,10 @@ class hm_index {
 
     template <class T>
     void build(const std::vector<const T*>& keys, uint32_t length, uint32_t alphabet_size, uint32_t buckets) {
-        if (length > 64) {
-            std::cerr << "error: length > 64 is not supported" << std::endl;
-            exit(1);
-        }
+        HMSEARCH_CHECK_IF(length > 64, "length > 64 is not supported.");
 
-#ifdef HM_PRINT_PROGRESS
-        std::cout << "[hm_index::build] buckets = " << buckets << std::endl;
+#ifdef HMSEARCH_PRINT_PROGRESS
+        std::cout << " # [hm_index::build] buckets = " << buckets << std::endl;
 #endif
 
         m_length = length;
@@ -331,8 +323,8 @@ class hm_index {
 
         std::vector<const T*> bucket_keys(keys.size());
         for (uint32_t b = 0; b < m_buckets; ++b) {
-#ifdef HM_PRINT_PROGRESS
-            std::cout << "- bucket id = " << b << std::endl;
+#ifdef HMSEARCH_PRINT_PROGRESS
+            std::cout << " #   - bucket_id = " << b << std::endl;
 #endif
             for (size_t i = 0; i < keys.size(); ++i) {
                 bucket_keys[i] = keys[i] + m_bucket_begs[b];
@@ -340,7 +332,7 @@ class hm_index {
             m_odv_indexes[b].build(bucket_keys, m_bucket_begs[b + 1] - m_bucket_begs[b], alphabet_size);
         }
 
-#ifdef HM_DISABLE_VERT
+#ifdef HMSEARCH_DISABLE_VERT
         m_keys = sdsl::int_vector<>(keys.size() * m_length, 0, sdsl::bits::hi(alphabet_size) + 1);
         for (size_t i = 0; i < keys.size(); ++i) {
             std::copy(keys[i], keys[i] + m_length, m_keys.begin() + (i * m_length));
@@ -359,10 +351,7 @@ class hm_index {
 
     template <class T>
     uint64_t search(const T* query, uint32_t hamming_range, std::function<void(uint32_t)> fn) const {
-        if (m_buckets != get_proper_buckets(hamming_range)) {
-            std::cerr << "error: unsupported hamming range, " << hamming_range << std::endl;
-            exit(1);
-        }
+        HMSEARCH_CHECK_IF(m_buckets != get_proper_buckets(hamming_range), "unsupported hamming range.");
 
         signature_t sig;
         std::unordered_map<uint32_t, uint32_t> match_map;
@@ -402,7 +391,7 @@ class hm_index {
             }
         }
 
-#ifndef HM_DISABLE_VERT
+#ifndef HMSEARCH_DISABLE_VERT
         std::vector<uint64_t> vertical_query(m_vertical_levels);
         for (uint32_t j = 0; j < m_vertical_levels; ++j) {
             vertical_query[j] = make_vertical_code(query, m_length, j);
@@ -438,7 +427,7 @@ class hm_index {
             // verification
             if (!filtered) {
                 uint64_t hammina_dist = 0;
-#ifdef HM_DISABLE_VERT
+#ifdef HMSEARCH_DISABLE_VERT
                 auto key = m_keys.begin() + (cand_id * m_length);
                 for (uint32_t j = 0; j < m_length; ++j) {
                     if (query[j] != key[j]) {
