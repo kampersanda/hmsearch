@@ -7,7 +7,7 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif ()
 
-# SDSL
+# SDSL (Please change the paths depending on your env.)
 link_directories($ENV{HOME}/lib)
 include_directories($ENV{HOME}/include)
 
