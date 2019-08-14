@@ -156,7 +156,7 @@ int main(int argc, char* argv[]) {
     std::vector<uint8_t> queries_buf;
     std::vector<const uint8_t*> queries;
 
-    std::cout << "Loading keys..." << std::endl;
+    std::cout << "Loading keys from " << key_fn << std::endl;
     {
         keys_buf = load_keys(key_fn, length, alphabet_size);
         keys.reserve(keys_buf.size() / length);
@@ -166,7 +166,7 @@ int main(int argc, char* argv[]) {
         std::cout << "--> " << keys.size() << " keys" << std::endl;
     }
 
-    std::cout << "Loading queries..." << std::endl;
+    std::cout << "Loading queries from " << query_fn << std::endl;
     {
         queries_buf = load_keys(query_fn, length, alphabet_size);
         queries.reserve(queries_buf.size() / length);
