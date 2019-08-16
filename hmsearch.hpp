@@ -387,7 +387,7 @@ class hm_index {
             });
 
             for (const auto& kv : match_map) {
-                if (kv.second >= 2) {
+                if (kv.second > 2) {
                     auto it = cand_map.find(kv.first);
                     if (it != cand_map.end()) {
                         it->second.push_back(0);

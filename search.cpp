@@ -210,6 +210,11 @@ int main(int argc, char* argv[]) {
             solutions.reserve(1U << 10);
             true_solutions.reserve(1U << 10);
 
+#ifdef HMSEARCH_PRINT_PROGRESS
+            std::cerr << " #" << std::flush;
+            hmsearch::progress_printer p(queries.size() - 1);
+#endif
+
             for (uint32_t j = 0; j < queries.size(); ++j) {
                 solutions.clear();
                 true_solutions.clear();
@@ -226,6 +231,9 @@ int main(int argc, char* argv[]) {
                 std::sort(solutions.begin(), solutions.end());
 
                 if (solutions.size() != true_solutions.size()) {
+#ifdef HMSEARCH_PRINT_PROGRESS
+                    std::cerr << std::endl;
+#endif
                     std::cerr << "verification error: solutions.size() != true_solutions.size() -> "  //
                               << solutions.size() << " != " << true_solutions.size() << std::endl;
                     std::cerr << "  at " << j << "-th query: " << queries[j] << std::endl;
@@ -236,13 +244,18 @@ int main(int argc, char* argv[]) {
 
                 for (uint32_t i = 0; i < solutions.size(); ++i) {
                     if (solutions[i] != true_solutions[i]) {
+#ifdef HMSEARCH_PRINT_PROGRESS
+                        std::cerr << std::endl;
+#endif
                         std::cerr << "verification error: solutions[i] != true_solutions[i] for i = " << i << std::endl;
                         std::cerr << "  at " << j << "-th query: " << queries[j] << std::endl;
                         return 1;
                     }
                 }
 
-                // std::cout << j << ":\t" << solutions.size() << " solutions" << std::endl;
+#ifdef HMSEARCH_PRINT_PROGRESS
+                p(j);
+#endif
             }
 
             std::cout << "--> No problem!!" << std::endl;
