@@ -202,6 +202,8 @@ int main(int argc, char* argv[]) {
         }
 
         if (enable_test) {
+            std::cout << "Testing search..." << std::endl;
+
             std::vector<uint32_t> solutions;
             std::vector<uint32_t> true_solutions;
 
@@ -229,8 +231,6 @@ int main(int argc, char* argv[]) {
                     std::cerr << "  at " << j << "-th query: " << queries[j] << std::endl;
                     compute_diff(solutions, true_solutions, "solutions - true_solutions");
                     compute_diff(true_solutions, solutions, "true_solutions - solutions");
-                    print_ints(std::cerr, queries[j], queries[j] + length);
-                    print_ints(std::cerr, keys[9477], keys[9477] + length);
                     return 1;
                 }
 

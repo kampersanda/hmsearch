@@ -48,6 +48,34 @@ struct sig_hash {
     }
 };
 
+#ifdef HMSEARCH_PRINT_PROGRESS
+class progress_printer {
+  public:
+    progress_printer(size_t max) {
+        const size_t step = max / 10;
+        for (size_t i = 1; i <= 9; ++i) {
+            m_stations[i - 1] = i * step;
+        }
+        m_stations[9] = max;
+        m_stations[10] = size_t(-1);
+    }
+
+    void operator()(size_t i) {
+        while (m_stations[m_cursor] <= i) {
+            std::cout << " *" << std::flush;
+            ++m_cursor;
+        }
+        if (m_cursor == 10) {
+            std::cout << " done!!" << std::endl;
+        }
+    }
+
+  private:
+    size_t m_stations[11];
+    size_t m_cursor = 0;
+};
+#endif
+
 // one-del-var
 class odv_index {
   public:
@@ -101,21 +129,14 @@ class odv_index {
         m_length = length;
         m_del_marker = alphabet_size;
 
-#ifdef HMSEARCH_PRINT_PROGRESS
-        std::cerr << " #    - Making signatures... " << std::flush;
-        uint32_t point = 0;
-#endif
-
         std::unordered_map<signature_t, std::vector<uint32_t>, sig_hash> signature_map;
         {
+#ifdef HMSEARCH_PRINT_PROGRESS
+            std::cerr << " #    - Making signatures... " << std::flush;
+            progress_printer p(keys.size() - 1);
+#endif
             signature_t sig(m_length);
             for (uint32_t i = 0; i < keys.size(); ++i) {
-#ifdef HMSEARCH_PRINT_PROGRESS
-                if (i == point) {
-                    std::cerr << " *" << std::flush;
-                    point += keys.size() / 10;
-                }
-#endif
                 for (uint32_t j = 0; j < m_length; ++j) {
                     HMSEARCH_CHECK_IF(keys[i][j] >= alphabet_size, "keys include a large character.");
 
@@ -128,11 +149,11 @@ class odv_index {
                         signature_map.insert(std::make_pair(sig, std::vector<uint32_t>{i}));
                     }
                 }
+#ifdef HMSEARCH_PRINT_PROGRESS
+                p(i);
+#endif
             }
         }
-#ifdef HMSEARCH_PRINT_PROGRESS
-        std::cerr << std::endl;
-#endif
 
         HMSEARCH_CHECK_IF(signature_map.size() > UINT32_MAX, "number of signatures exceeds UINT32_MAX.");
 
@@ -144,19 +165,12 @@ class odv_index {
 #ifdef HMSEARCH_PRINT_PROGRESS
         std::cerr << " #    - Storing signatures..." << std::flush;
         uint32_t progress = 0;
-        point = 0;
+        progress_printer p(signature_map.size() - 1);
 #endif
 
         uint64_t sig_beg = 0;
 
         for (const auto& kv : signature_map) {
-#ifdef HMSEARCH_PRINT_PROGRESS
-            if (progress++ == point) {
-                std::cerr << " *" << std::flush;
-                point += signature_map.size() / 10;
-            }
-#endif
-
             const signature_t& sig = kv.first;
             const std::vector<uint32_t>& ids = kv.second;
 
@@ -180,10 +194,10 @@ class odv_index {
                     pos = 0;
                 }
             }
-        }
 #ifdef HMSEARCH_PRINT_PROGRESS
-        std::cerr << std::endl;
+            p(progress++);
 #endif
+        }
 
         assert(sig_beg == m_signatures.size());
         assert(m_ids.size() == keys.size() * m_length);
@@ -426,7 +440,7 @@ class hm_index {
 
             // verification
             if (!filtered) {
-                uint64_t hammina_dist = 0;
+                uint32_t hammina_dist = 0;
 #ifdef HMSEARCH_DISABLE_VERT
                 auto key = m_keys.begin() + (cand_id * m_length);
                 for (uint32_t j = 0; j < m_length; ++j) {
