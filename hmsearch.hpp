@@ -62,11 +62,11 @@ class progress_printer {
 
     void operator()(size_t i) {
         while (m_stations[m_cursor] <= i) {
-            std::cout << " *" << std::flush;
+            std::cerr << " *" << std::flush;
             ++m_cursor;
         }
         if (m_cursor == 10) {
-            std::cout << " done!!" << std::endl;
+            std::cerr << " done!!" << std::endl;
         }
     }
 
